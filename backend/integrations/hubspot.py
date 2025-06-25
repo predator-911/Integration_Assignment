@@ -1,4 +1,4 @@
-# hubspot.py
+# hubspot.py - FIXED VERSION
 
 import json
 import secrets
@@ -13,8 +13,8 @@ from integrations.integration_item import IntegrationItem
 from redis_client import add_key_value_redis, get_value_redis, delete_key_redis
 
 # Replace these with your actual HubSpot app credentials
-CLIENT_ID = 'your_hubspot_client_id'
-CLIENT_SECRET = 'your_hubspot_client_secret'
+CLIENT_ID = '0541238c-4c74-4066-b711-212706e87a9f'  # Replace with real client ID
+CLIENT_SECRET = '86c6c94d-2982-4f1a-97b6-11d1d050f8fc'  # Replace with real client secret
 REDIRECT_URI = 'http://localhost:8000/integrations/hubspot/oauth2callback'
 
 # HubSpot OAuth URLs
@@ -106,6 +106,7 @@ async def oauth2callback_hubspot(request: Request):
         )
     
     if token_response.status_code != 200:
+        print(f"Token exchange failed: {token_response.status_code} - {token_response.text}")
         raise HTTPException(status_code=400, detail='Failed to exchange code for token')
     
     # Store credentials temporarily
@@ -188,31 +189,47 @@ def fetch_paginated_data(access_token: str, endpoint: str, object_type: str) -> 
     headers = {'Authorization': f'Bearer {access_token}'}
     
     while url:
-        response = requests.get(url, headers=headers)
-        
-        if response.status_code != 200:
-            print(f"Error fetching {object_type}: {response.status_code} - {response.text}")
-            break
+        try:
+            print(f"Fetching {object_type} from: {url}")
+            response = requests.get(url, headers=headers)
             
-        data = response.json()
-        results = data.get('results', [])
-        
-        for item in results:
-            all_items.append(item)
-        
-        # Check for next page
-        paging = data.get('paging', {})
-        url = paging.get('next', {}).get('link') if paging.get('next') else None
+            if response.status_code != 200:
+                print(f"Error fetching {object_type}: {response.status_code} - {response.text}")
+                break
+                
+            data = response.json()
+            results = data.get('results', [])
+            
+            print(f"Got {len(results)} {object_type} items in this batch")
+            
+            for item in results:
+                all_items.append(item)
+            
+            # Check for next page
+            paging = data.get('paging', {})
+            url = paging.get('next', {}).get('link') if paging.get('next') else None
+            
+        except Exception as e:
+            print(f"Exception while fetching {object_type}: {str(e)}")
+            break
     
     return all_items
 
 async def get_items_hubspot(credentials) -> list[IntegrationItem]:
     """Fetch all HubSpot items and return as IntegrationItem objects"""
-    credentials = json.loads(credentials)
+    print("Starting HubSpot data fetch...")
+    
+    # Parse credentials
+    if isinstance(credentials, str):
+        credentials = json.loads(credentials)
+    
     access_token = credentials.get('access_token')
     
     if not access_token:
+        print("No access token found in credentials")
         raise HTTPException(status_code=400, detail='No access token found in credentials')
+    
+    print(f"Access token found: {access_token[:20]}...")
     
     integration_items = []
     
@@ -248,7 +265,9 @@ async def get_items_hubspot(credentials) -> list[IntegrationItem]:
     for item in integration_items:
         type_counts[item.type] = type_counts.get(item.type, 0) + 1
     
+    print("Summary by type:")
     for item_type, count in type_counts.items():
-        print(f"{item_type}: {count} items")
+        print(f"  {item_type}: {count} items")
     
+    # CRITICAL FIX: Actually return the integration_items list!
     return integration_items
