@@ -2,71 +2,75 @@
 
 import React, { useState } from 'react';
 import { Button, Card, CardContent, Typography, Box, Alert, CircularProgress } from '@mui/material';
-import { integrateHubSpot } from './integrations/hubspot';
-// Import other integrations as needed
-// import { integrateAirTable } from './integrations/airtable';
-// import { integrateNotion } from './integrations/notion';
+import { HubSpotIntegration } from './integrations/hubspot';
+import { AirtableIntegration } from './integrations/airtable';
+import { NotionIntegration } from './integrations/notion';
+import { loadHubSpotItems } from './integrations/hubspot';
 
 function App() {
-  const [hubspotResults, setHubspotResults] = useState(null);
+  const [integrations, setIntegrations] = useState({
+    hubspot: { credentials: null, type: null },
+    airtable: { credentials: null, type: null },
+    notion: { credentials: null, type: null }
+  });
+  
+  const [loadedItems, setLoadedItems] = useState({
+    hubspot: null,
+    airtable: null,
+    notion: null
+  });
+  
   const [loading, setLoading] = useState({
     hubspot: false,
     airtable: false,
     notion: false
   });
+  
   const [error, setError] = useState(null);
 
   // Mock user and org IDs for testing
   const userId = 'test-user-123';
   const orgId = 'test-org-456';
 
-  const handleHubSpotIntegration = async () => {
-    setLoading(prev => ({ ...prev, hubspot: true }));
+  // Function to load items after connection
+  const handleLoadItems = async (integrationType) => {
+    const integration = integrations[integrationType];
+    
+    if (!integration.credentials) {
+      setError(`${integrationType} not connected yet`);
+      return;
+    }
+
+    setLoading(prev => ({ ...prev, [integrationType]: true }));
     setError(null);
     
     try {
-      const result = await integrateHubSpot(userId, orgId);
-      setHubspotResults(result);
+      let items;
       
-      if (result.success) {
-        console.log('HubSpot Integration Success:', result);
-      } else {
-        setError(result.message);
+      switch (integrationType) {
+        case 'hubspot':
+          items = await loadHubSpotItems(integration.credentials);
+          break;
+        case 'airtable':
+          // TODO: Implement loadAirtableItems
+          setError('Airtable item loading not implemented yet');
+          return;
+        case 'notion':
+          // TODO: Implement loadNotionItems
+          setError('Notion item loading not implemented yet');
+          return;
+        default:
+          setError('Unknown integration type');
+          return;
       }
+      
+      setLoadedItems(prev => ({ ...prev, [integrationType]: items }));
+      console.log(`${integrationType} items loaded:`, items);
+      
     } catch (err) {
-      setError('Failed to integrate with HubSpot: ' + err.message);
+      setError(`Failed to load ${integrationType} items: ${err.message}`);
     } finally {
-      setLoading(prev => ({ ...prev, hubspot: false }));
-    }
-  };
-
-  const handleAirtableIntegration = async () => {
-    setLoading(prev => ({ ...prev, airtable: true }));
-    setError(null);
-    
-    try {
-      // Implement Airtable integration
-      console.log('Airtable integration not implemented yet');
-      setError('Airtable integration requires valid credentials');
-    } catch (err) {
-      setError('Failed to integrate with Airtable: ' + err.message);
-    } finally {
-      setLoading(prev => ({ ...prev, airtable: false }));
-    }
-  };
-
-  const handleNotionIntegration = async () => {
-    setLoading(prev => ({ ...prev, notion: true }));
-    setError(null);
-    
-    try {
-      // Implement Notion integration
-      console.log('Notion integration not implemented yet');
-      setError('Notion integration requires valid credentials');
-    } catch (err) {
-      setError('Failed to integrate with Notion: ' + err.message);
-    } finally {
-      setLoading(prev => ({ ...prev, notion: false }));
+      setLoading(prev => ({ ...prev, [integrationType]: false }));
     }
   };
 
@@ -98,35 +102,30 @@ function App() {
               Connect to your HubSpot account to access contacts, companies, deals, tickets, quotes, and products.
             </Typography>
             
-            <Button
-              variant="contained"
-              color="primary"
-              onClick={handleHubSpotIntegration}
-              disabled={loading.hubspot}
-              startIcon={loading.hubspot && <CircularProgress size={20} />}
-              sx={{ mb: 2 }}
-            >
-              {loading.hubspot ? 'Connecting...' : 'Connect HubSpot'}
-            </Button>
+            <HubSpotIntegration 
+              user={userId}
+              org={orgId}
+              integrationParams={integrations.hubspot}
+              setIntegrationParams={(params) => 
+                setIntegrations(prev => ({ ...prev, hubspot: typeof params === 'function' ? params(prev.hubspot) : params }))
+              }
+            />
 
-            {hubspotResults && (
+            {integrations.hubspot.credentials && (
               <Box sx={{ mt: 2 }}>
-                <Typography variant="h6" gutterBottom>
-                  Integration Results:
-                </Typography>
-                <Alert severity={hubspotResults.success ? 'success' : 'error'}>
-                  {hubspotResults.message}
-                </Alert>
+                <Button
+                  variant="outlined"
+                  onClick={() => handleLoadItems('hubspot')}
+                  disabled={loading.hubspot}
+                  startIcon={loading.hubspot && <CircularProgress size={20} />}
+                >
+                  {loading.hubspot ? 'Loading Items...' : 'Load HubSpot Items'}
+                </Button>
                 
-                {hubspotResults.success && hubspotResults.items && (
-                  <Box sx={{ mt: 2 }}>
-                    <Typography variant="body2">
-                      <strong>Items Retrieved:</strong> {hubspotResults.items.length}
-                    </Typography>
-                    <Typography variant="body2" sx={{ fontFamily: 'monospace', fontSize: '0.8em', mt: 1 }}>
-                      Check console for detailed item list
-                    </Typography>
-                  </Box>
+                {loadedItems.hubspot && (
+                  <Alert severity="success" sx={{ mt: 2 }}>
+                    Successfully loaded {loadedItems.hubspot.length} HubSpot items. Check console for details.
+                  </Alert>
                 )}
               </Box>
             )}
@@ -143,15 +142,14 @@ function App() {
               Connect to your Airtable bases and tables.
             </Typography>
             
-            <Button
-              variant="contained"
-              color="secondary"
-              onClick={handleAirtableIntegration}
-              disabled={loading.airtable}
-              startIcon={loading.airtable && <CircularProgress size={20} />}
-            >
-              {loading.airtable ? 'Connecting...' : 'Connect Airtable'}
-            </Button>
+            <AirtableIntegration 
+              user={userId}
+              org={orgId}
+              integrationParams={integrations.airtable}
+              setIntegrationParams={(params) => 
+                setIntegrations(prev => ({ ...prev, airtable: typeof params === 'function' ? params(prev.airtable) : params }))
+              }
+            />
             
             <Typography variant="caption" display="block" sx={{ mt: 1, color: 'orange' }}>
               Note: Requires valid Airtable app credentials
@@ -169,15 +167,14 @@ function App() {
               Connect to your Notion workspace and pages.
             </Typography>
             
-            <Button
-              variant="contained"
-              color="info"
-              onClick={handleNotionIntegration}
-              disabled={loading.notion}
-              startIcon={loading.notion && <CircularProgress size={20} />}
-            >
-              {loading.notion ? 'Connecting...' : 'Connect Notion'}
-            </Button>
+            <NotionIntegration 
+              user={userId}
+              org={orgId}
+              integrationParams={integrations.notion}
+              setIntegrationParams={(params) => 
+                setIntegrations(prev => ({ ...prev, notion: typeof params === 'function' ? params(prev.notion) : params }))
+              }
+            />
             
             <Typography variant="caption" display="block" sx={{ mt: 1, color: 'orange' }}>
               Note: Requires valid Notion app credentials
@@ -193,8 +190,9 @@ function App() {
         </Typography>
         <Typography variant="body2" component="div">
           <ul>
-            <li>HubSpot integration is fully implemented and testable with valid credentials</li>
-            <li>Airtable and Notion integrations exist in backend but need valid app credentials</li>
+            <li>All integrations follow consistent OAuth patterns</li>
+            <li>HubSpot integration includes item loading functionality</li>
+            <li>Airtable and Notion integrations need valid app credentials</li>
             <li>User ID: {userId}</li>
             <li>Org ID: {orgId}</li>
             <li>Backend running on: http://localhost:8000</li>
